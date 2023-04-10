@@ -23,15 +23,35 @@ function extractASPValues($) {
 }
 
 // actual scraping code for a bill detail page
-function extractDetails($) {
+function extractDetails($, url) {
   var bill = $("#frg_billstatus_BillHeading").text();
   var categories = $("#frg_billstatus_CategoryList").text();
-  var activity = $("#frg_billstatus_HistoriesGridView");
   var hasHouseAnalysis = $("#frg_billstatus_HlaTable tr").length > 0;
   var hasSenateAnalysis = $("#frg_billstatus_SfaTable tr").length > 0;
+  var text = {
+    introduced: $("#frg_billstatus_ImageIntroHtm a"),
+    senatePassed: $("#frg_billstatus_ImageApb1Htm a"),
+    housePassed: $("#frg_billstatus_ImageApb2Htm a"),
+    enrolled: $("#frg_billstatus_ImageEnrolledHtm a"),
+    concurred: $("#frg_billstatus_ImageconcurredHtm a"),
+    act: $("#frg_billstatus_ImageEnrolledHtm a")
+  };
+  for (var k in text) {
+    if (text[k].length) {
+      text[k] = new URL(text[k].get(0).attribs.href, url).toString();
+    } else {
+      delete text[k];
+    }
+  }
+  var activity = $("#frg_billstatus_HistoriesGridView");
   var last = activity.find("tr:last-child td");
   var [ date, journal, action ] = [...last].map(e => $(e).text());
-  return { bill, categories, date, action, hasHouseAnalysis, hasSenateAnalysis };
+  var dateValue = 0;
+  if (date) { 
+    var [m, d, y] = date.split("/").map(Number);
+    dateValue = new Date(y, m - 1, d);
+  }
+  return { url, bill, categories, date, dateValue, action, hasHouseAnalysis, hasSenateAnalysis, ...text };
 }
 
 // this is a little simpler than having an async main() that we immediately call
@@ -62,16 +82,9 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
       console.log(` > Scraping ${object}...`);
       var detailHTML = await fetch(detailURL).then(r => r.text());
       var $detail = cheerio.load(detailHTML);
-      var extracted = extractDetails($detail);
-      extracted.url = detailURL;
+      var extracted = extractDetails($detail, detailURL);
       extracted.chamber = chamber;
       extracted.link = `=HYPERLINK("${detailURL}", "${extracted.bill}")`;
-      if (extracted.date) {
-        var [m, d, y] = extracted.date.split("/").map(Number);
-        extracted.dateValue = new Date(y, m - 1, d);
-      } else {
-        extracted.dateValue = 0;
-      }
       bills.push(extracted);
     }
   }
@@ -79,9 +92,6 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
   console.log(`Total extracted: ${bills.length}`);
   fs.writeFileSync("output.json", JSON.stringify({ timestamp: Date.now(), bills }, null, 2));
   console.log(`Pushing to https://docs.google.com/spreadsheets/d/${SHEET}/edit...`);
-  await sheets.spreadsheets.values.clear({
-    auth, spreadsheetId: SHEET, range: "bills!A:ZZZ"
-  });
   var headers = [
     "chamber",
     "link",
@@ -96,6 +106,9 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
     var row = headers.map(h => bill[h]);
     values.push(row);
   }
+  await sheets.spreadsheets.values.clear({
+    auth, spreadsheetId: SHEET, range: "bills!A:ZZZ"
+  });
   await sheets.spreadsheets.values.update({
     auth, spreadsheetId: SHEET, range: "bills!A1", valueInputOption: "USER_ENTERED",
     resource: { values }
