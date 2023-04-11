@@ -57,6 +57,8 @@ async function scrapeDetails(url) {
 
 // this is a little simpler than having an async main() that we immediately call
 fetch(BILLS).then(async function(redirect) {
+  // the application actually has a hash in the URL, and if it's not there for your session, it will ignore you
+  // so we get the root page, extract ASP values, but also store its new location for further queries
   const ROOT = redirect.url;
   console.log(`Got redirect URL for scraping: ${ROOT}`);
   var html = await redirect.text();
