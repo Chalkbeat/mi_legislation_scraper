@@ -25,10 +25,13 @@ function extractASPValues($) {
 async function scrapeDetails(url) {
   var html = await fetch(url).then(r => r.text());
   var $ = cheerio.load(html);
+  // basic metadata
   var bill = $("#frg_billstatus_BillHeading").text();
   var categories = $("#frg_billstatus_CategoryList").text();
+  // check for fiscal analysis documents
   var hasHouseAnalysis = $("#frg_billstatus_HlaTable tr").length > 0;
   var hasSenateAnalysis = $("#frg_billstatus_SfaTable tr").length > 0;
+  // check for bill text documents at various stages
   var docs = {
     introduced: $("#frg_billstatus_ImageIntroHtm a"),
     senatePassed: $("#frg_billstatus_ImageApb1Htm a"),
@@ -37,6 +40,7 @@ async function scrapeDetails(url) {
     concurred: $("#frg_billstatus_ImageconcurredHtm a"),
     act: $("#frg_billstatus_ImageEnrolledHtm a")
   };
+  // update the bill text to contain just URLs linking to each one
   for (var k in docs) {
     if (docs[k].length) {
       docs[k] = new URL(docs[k].get(0).attribs.href, url).toString();
@@ -44,6 +48,7 @@ async function scrapeDetails(url) {
       delete docs[k];
     }
   }
+  // get the last listed activity on this bill
   var activity = $("#frg_billstatus_HistoriesGridView");
   var last = activity.find("tr:last-child td");
   var [ date, journal, action ] = [...last].map(e => $(e).text());
@@ -52,7 +57,8 @@ async function scrapeDetails(url) {
     var [m, d, y] = date.split("/").map(Number);
     dateValue = new Date(y, m - 1, d);
   }
-  return { url, bill, categories, date, dateValue, action, hasHouseAnalysis, hasSenateAnalysis, ...docs };
+  var link = `=HYPERLINK("${url}", "${bill}")`;
+  return { url, link, bill, categories, date, dateValue, action, hasHouseAnalysis, hasSenateAnalysis, ...docs };
 }
 
 // this is a little simpler than having an async main() that we immediately call
@@ -80,13 +86,11 @@ fetch(BILLS).then(async function(redirect) {
     var $ = cheerio.load(response);
     var links = $("#frg_executesearch_SearchResults_Results tr td:first-child a").toArray();
     var urls = links.map(l => l.attribs.href);
-    for (var url of urls) {
+    for (var [i, url] of urls.entries()) {
       var dest = new URL(url, ROOT);
       var page = dest.toString();
-      console.log(` > Scraping ${dest.searchParams.get("objectname")}...`);
+      console.log(` > Scraping ${dest.searchParams.get("objectname")} (${i + 1} of ${urls.length})...`);
       var extracted = await scrapeDetails(page);
-      extracted.chamber = chamber;
-      extracted.link = `=HYPERLINK("${page}", "${extracted.bill}")`;
       bills.push(extracted);
     }
   }
@@ -95,9 +99,8 @@ fetch(BILLS).then(async function(redirect) {
   fs.writeFileSync("output.json", JSON.stringify({ timestamp: Date.now(), bills }, null, 2));
   console.log(`Pushing to https://docs.google.com/spreadsheets/d/${SHEET}/edit...`);
   var columns = [
-    "chamber",
-    "link",
     "date",
+    "link",
     "action",
     "categories",
     "hasSenateAnalysis",
