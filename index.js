@@ -3,8 +3,7 @@ var google = require("@googleapis/sheets");
 var { getClient } = require("./auth");
 var fs = require("fs");
 
-const BILLS = "http://legislature.mi.gov/(S(cdfw1dajvg3m5rvu3ahj5mtc))/mileg.aspx?page=Bills";
-const DETAILS = "http://legislature.mi.gov/(S(cdfw1dajvg3m5rvu3ahj5mtc))/mileg.aspx?page=getobject&objectname=2023-HB-4001&query=on";
+const BILLS = "https://legislature.mi.gov/mileg.aspx?page=Bills";
 const SHEET = "1PUWVVtRwmx5_XlD2brZJ_lpeVvBI6FLGRyn0AMtHKIE";
 
 var sheets = google.sheets("v4");
@@ -23,12 +22,14 @@ function extractASPValues($) {
 }
 
 // actual scraping code for a bill detail page
-function extractDetails($, url) {
+async function scrapeDetails(url) {
+  var html = await fetch(url).then(r => r.text());
+  var $ = cheerio.load(html);
   var bill = $("#frg_billstatus_BillHeading").text();
   var categories = $("#frg_billstatus_CategoryList").text();
   var hasHouseAnalysis = $("#frg_billstatus_HlaTable tr").length > 0;
   var hasSenateAnalysis = $("#frg_billstatus_SfaTable tr").length > 0;
-  var text = {
+  var docs = {
     introduced: $("#frg_billstatus_ImageIntroHtm a"),
     senatePassed: $("#frg_billstatus_ImageApb1Htm a"),
     housePassed: $("#frg_billstatus_ImageApb2Htm a"),
@@ -36,11 +37,11 @@ function extractDetails($, url) {
     concurred: $("#frg_billstatus_ImageconcurredHtm a"),
     act: $("#frg_billstatus_ImageEnrolledHtm a")
   };
-  for (var k in text) {
-    if (text[k].length) {
-      text[k] = new URL(text[k].get(0).attribs.href, url).toString();
+  for (var k in docs) {
+    if (docs[k].length) {
+      docs[k] = new URL(docs[k].get(0).attribs.href, url).toString();
     } else {
-      delete text[k];
+      delete docs[k];
     }
   }
   var activity = $("#frg_billstatus_HistoriesGridView");
@@ -51,12 +52,15 @@ function extractDetails($, url) {
     var [m, d, y] = date.split("/").map(Number);
     dateValue = new Date(y, m - 1, d);
   }
-  return { url, bill, categories, date, dateValue, action, hasHouseAnalysis, hasSenateAnalysis, ...text };
+  return { url, bill, categories, date, dateValue, action, hasHouseAnalysis, hasSenateAnalysis, ...docs };
 }
 
 // this is a little simpler than having an async main() that we immediately call
-fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
-  var home = cheerio.load(homeHTML);
+fetch(BILLS).then(async function(redirect) {
+  const ROOT = redirect.url;
+  console.log(`Got redirect URL for scraping: ${ROOT}`);
+  var html = await redirect.text();
+  var home = cheerio.load(html);
   var asp = extractASPValues(home);
   var bills = [];
   // get the listings of house and senate bills
@@ -69,22 +73,18 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
       [`frg_bills$BrowseBills$Button${chamber == "House" ? 1 : 2}`]: "Browse"
     };
     var body = new URLSearchParams(form);
-    var response = await fetch(BILLS, { body, method: "POST" }).then(r => r.text());
+    var request = await fetch(ROOT, { body, method: "POST" });
+    var response = await request.text();
     var $ = cheerio.load(response);
     var links = $("#frg_executesearch_SearchResults_Results tr td:first-child a").toArray();
     var urls = links.map(l => l.attribs.href);
     for (var url of urls) {
-      var params = new URL(url, BILLS).searchParams;
-      var object = params.get("objectname");
-      var detailURL = new URL(DETAILS);
-      detailURL.searchParams.set("objectname", object);
-      detailURL = detailURL.toString();
-      console.log(` > Scraping ${object}...`);
-      var detailHTML = await fetch(detailURL).then(r => r.text());
-      var $detail = cheerio.load(detailHTML);
-      var extracted = extractDetails($detail, detailURL);
+      var dest = new URL(url, ROOT);
+      var page = dest.toString();
+      console.log(` > Scraping ${dest.searchParams.get("objectname")}...`);
+      var extracted = await scrapeDetails(page);
       extracted.chamber = chamber;
-      extracted.link = `=HYPERLINK("${detailURL}", "${extracted.bill}")`;
+      extracted.link = `=HYPERLINK("${page}", "${extracted.bill}")`;
       bills.push(extracted);
     }
   }
@@ -92,7 +92,7 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
   console.log(`Total extracted: ${bills.length}`);
   fs.writeFileSync("output.json", JSON.stringify({ timestamp: Date.now(), bills }, null, 2));
   console.log(`Pushing to https://docs.google.com/spreadsheets/d/${SHEET}/edit...`);
-  var headers = [
+  var columns = [
     "chamber",
     "link",
     "date",
@@ -101,9 +101,9 @@ fetch(BILLS).then(r => r.text()).then(async function(homeHTML) {
     "hasSenateAnalysis",
     "hasHouseAnalysis"
   ];
-  var values = [headers];
+  var values = [columns];
   for (var bill of bills) {
-    var row = headers.map(h => bill[h]);
+    var row = columns.map(h => bill[h]);
     values.push(row);
   }
   await sheets.spreadsheets.values.clear({
