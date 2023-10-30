@@ -71,6 +71,7 @@ fetch(BILLS).then(async function(redirect) {
   var home = cheerio.load(html);
   var asp = extractASPValues(home);
   var bills = [];
+  var chambers = { "House": [], "Senate": [] };
   // get the listings of house and senate bills
   for (var chamber of ["House", "Senate"]) {
     console.log(`Getting list of ${chamber} bills...`);
@@ -85,7 +86,10 @@ fetch(BILLS).then(async function(redirect) {
     var response = await request.text();
     var $ = cheerio.load(response);
     var links = $("#frg_executesearch_SearchResults_Results tr td:first-child a").toArray();
-    var urls = links.map(l => l.attribs.href);
+    chambers[chamber] = links.map(l => l.attribs.href);
+  }
+  console.log("Found bills - " + Object.keys(chambers).map(c => `${c}: ${chambers[c].length}`).join(", "));
+  for (var [chamber, urls] of Object.entries(chambers)) {
     for (var [i, url] of urls.entries()) {
       var dest = new URL(url, ROOT);
       var page = dest.toString();
