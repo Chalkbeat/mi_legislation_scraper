@@ -88,6 +88,10 @@ fetch(BILLS).then(async function(redirect) {
     var links = $("#frg_executesearch_SearchResults_Results tr td:first-child a").toArray();
     chambers[chamber] = links.map(l => l.attribs.href);
   }
+  if (!chambers.House && !chambers.Senate) {
+    console.log("No bills found--seems bad");
+    process.exit();
+  }
   console.log("Found bills - " + Object.keys(chambers).map(c => `${c}: ${chambers[c].length}`).join(", "));
   for (var [chamber, urls] of Object.entries(chambers)) {
     for (var [i, url] of urls.entries()) {
