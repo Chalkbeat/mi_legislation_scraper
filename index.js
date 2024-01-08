@@ -88,7 +88,7 @@ fetch(BILLS).then(async function(redirect) {
     var links = $("#frg_executesearch_SearchResults_Results tr td:first-child a").toArray();
     chambers[chamber] = links.map(l => l.attribs.href);
   }
-  if (!chambers.House && !chambers.Senate) {
+  if (!chambers.House.length && !chambers.Senate.length) {
     console.log("No bills found--seems bad");
     process.exit();
   }
