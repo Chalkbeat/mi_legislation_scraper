@@ -1,3 +1,4 @@
 node_modules
-output.json
+*.db
 package-lock.json
+output.csv

@@ -1,16 +1,10 @@
 {
-  "name": "mi_legislation_scraper",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "type": "module",
   "dependencies": {
-    "@googleapis/sheets": "^4.0.2",
-    "cheerio": "^1.0.0-rc.12"
+    "@civicnews/legiscan-client": "^1.0.2",
+    "@googleapis/sheets": "^7.0.0",
+    "better-sqlite3": "^10.0.0",
+    "cli-progress": "^3.12.0",
+    "csv": "^6.3.9"
   }
 }

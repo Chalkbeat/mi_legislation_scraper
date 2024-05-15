@@ -1,15 +1,14 @@
-var fs = require("fs");
-var google = require("@googleapis/sheets");
-var http = require("http");
-var path = require("path");
-var os = require("os");
-var url = require("url");
+import fs from "node:fs";
+import google from "@googleapis/sheets";
+import http from "node:http";
+import path from "node:path";
+import os from "node:os";
 
 var clientID = process.env.GOOGLE_OAUTH_CLIENT_ID;
 var secret = process.env.GOOGLE_OAUTH_CONSUMER_SECRET;
 var tokenLocation = path.join(os.homedir(), ".google_oauth_token");
 
-var getClient = function() {
+export function getClient() {
   var auth = new google.auth.OAuth2(clientID, secret, "http://localhost:8000/authenticate/");
   var tokens = {};
 
@@ -29,7 +28,7 @@ var getClient = function() {
   return auth;
 }
 
-var authenticate = function(permissions = []) {
+export function authenticate(permissions = []) {
 
   return new Promise(function(ok, fail) {
 
@@ -59,7 +58,7 @@ var authenticate = function(permissions = []) {
 
     var onAuthenticated = async function(request, response) {
       var requestURL = request.url[0] == "/" ? "localhost:8000" + request.url : request.url;
-      var query = new url.URL(requestURL).searchParams;
+      var query = new URL(requestURL).searchParams;
       var code = query.get("code");
       if (!code) return;
       try {
@@ -82,5 +81,3 @@ var authenticate = function(permissions = []) {
 
   });
 };
-
-module.exports = { authenticate, getClient }
