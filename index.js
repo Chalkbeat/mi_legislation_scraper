@@ -22,22 +22,24 @@ const BATCH_SIZE = 20;
 var client = new LegiscanClient();
 
 var header = ["bill ID", "last action", "bill number","description", "link", "subjects", "sponsors", "supplements"];
-var handle = await fs.open("../output.csv", "w+");
+var handle = await fs.open("log.txt", "a");
 var stream = handle.createWriteStream();
-var exporter = stringify({});
-exporter.pipe(stream);
-exporter.write(header);
+function log(out) {
+  console.log(out);
+  var now = new Date();
+  stream.write(`${now} - ${out}\n`);
+}
 
 var values = [header];
 
-console.log("Getting master list from Legiscan...");
+log("Getting master list from Legiscan...");
 var all = await client.getMasterList({ state: "MI"});
 
 var cachedCount = 0;
 var bar = new progress.SingleBar({
   format: "{bar} | Retrieved: {value}/{total} ({percentage}%) | Cached: {cachedCount}/{total}"
 }, progress.Presets.rect);
-console.log("Retrieving details for each bill...");
+log("Retrieving details for each bill...");
 bar.start(all.length, 0, { cachedCount });
 
 for (var i = 0; i < all.length; i += BATCH_SIZE) {
@@ -76,16 +78,13 @@ for (var i = 0; i < all.length; i += BATCH_SIZE) {
     // add metadata for sorting
     var [y, m, d] = bill.last_action_date.split(/[-/]/).map(Number);
     row.metaDate = new Date(y, m - 1, d);
-    exporter.write(row);
     values.push(row);
   }
 };
 
 bar.stop();
 
-exporter.end();
-
-console.log("Uploading to sheets...");
+log("Uploading to sheets...");
 values = values.sort((a, b) => b.metaDate - a.metaDate);
 
 // upload to Sheets
@@ -96,4 +95,4 @@ await sheets.spreadsheets.values.update({
   auth, spreadsheetId: SHEET, range: "bills!A1", valueInputOption: "USER_ENTERED",
   resource: { values }
 });
-console.log(`Uploaded ${values.length} rows`);
+log(`Uploaded ${values.length} rows`);
